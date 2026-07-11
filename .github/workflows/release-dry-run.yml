@@ -1,0 +1,58 @@
+name: Release Dry Run
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Semantic version to validate, without the leading v
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-dry-run-${{ inputs.version }}
+  cancel-in-progress: false
+
+jobs:
+  dry-run:
+    name: Validate v${{ inputs.version }}
+    runs-on: macos-26
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Setup Swift quality tools
+        uses: ./.github/actions/setup-swift-tools
+
+      - name: Run release checks
+        env:
+          VERSION: ${{ inputs.version }}
+        run: ./Scripts/release-checks.sh "$VERSION"
+
+      - name: Build source archive
+        env:
+          VERSION: ${{ inputs.version }}
+        run: ./Scripts/package-release.sh "$VERSION" "$RUNNER_TEMP"
+
+      - name: Upload dry-run archive
+        uses: actions/upload-artifact@v7
+        with:
+          name: RecordCatalogKit-${{ inputs.version }}-dry-run
+          path: ${{ runner.temp }}/RecordCatalogKit-${{ inputs.version }}.zip
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Summarize
+        env:
+          VERSION: ${{ inputs.version }}
+        run: |
+          {
+            echo "## Release dry run passed"
+            echo
+            echo "RecordCatalogKit v${VERSION} passed formatting, linting, tests, and release compilation."
+            echo "No tag or GitHub release was created."
+          } >> "$GITHUB_STEP_SUMMARY"

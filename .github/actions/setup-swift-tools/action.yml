@@ -1,0 +1,23 @@
+name: Setup Swift quality tools
+description: Install SwiftFormat and SwiftLint when the runner image does not provide them
+
+runs:
+  using: composite
+  steps:
+    - name: Install tools
+      shell: bash
+      env:
+        HOMEBREW_NO_AUTO_UPDATE: "1"
+      run: |
+        set -euo pipefail
+
+        if ! command -v swiftformat >/dev/null 2>&1; then
+          brew install swiftformat
+        fi
+
+        if ! command -v swiftlint >/dev/null 2>&1; then
+          brew install swiftlint
+        fi
+
+        echo "SwiftFormat $(swiftformat --version)"
+        echo "SwiftLint $(swiftlint version)"

@@ -1,0 +1,102 @@
+name: Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Semantic version to release, without the leading v
+        required: true
+        type: string
+      confirmation:
+        description: Type release VERSION, for example release 1.0.0
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  release:
+    name: Publish v${{ inputs.version }}
+    runs-on: macos-26
+    timeout-minutes: 30
+
+    steps:
+      - name: Require main branch and explicit confirmation
+        env:
+          BRANCH: ${{ github.ref_name }}
+          VERSION: ${{ inputs.version }}
+          CONFIRMATION: ${{ inputs.confirmation }}
+        run: |
+          set -euo pipefail
+
+          if [[ "$BRANCH" != "main" ]]; then
+            echo "The release workflow must be dispatched from main." >&2
+            exit 1
+          fi
+
+          if [[ "$CONFIRMATION" != "release $VERSION" ]]; then
+            echo "Confirmation must exactly match: release $VERSION" >&2
+            exit 1
+          fi
+
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Setup Swift quality tools
+        uses: ./.github/actions/setup-swift-tools
+
+      - name: Run release checks
+        env:
+          VERSION: ${{ inputs.version }}
+        run: ./Scripts/release-checks.sh "$VERSION"
+
+      - name: Verify tag does not exist
+        env:
+          VERSION: ${{ inputs.version }}
+        run: |
+          set -euo pipefail
+          TAG="v${VERSION#v}"
+
+          if git ls-remote --exit-code --tags origin "refs/tags/$TAG" >/dev/null 2>&1; then
+            echo "Tag $TAG already exists." >&2
+            exit 1
+          fi
+
+      - name: Build source archive
+        env:
+          VERSION: ${{ inputs.version }}
+        run: ./Scripts/package-release.sh "$VERSION" "$RUNNER_TEMP"
+
+      - name: Create tag and GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ inputs.version }}
+        run: |
+          set -euo pipefail
+          VERSION="${VERSION#v}"
+          TAG="v$VERSION"
+          ARCHIVE="$RUNNER_TEMP/RecordCatalogKit-$VERSION.zip"
+
+          gh release create "$TAG" "$ARCHIVE" \
+            --target "$GITHUB_SHA" \
+            --title "$TAG" \
+            --generate-notes
+
+      - name: Summarize
+        env:
+          VERSION: ${{ inputs.version }}
+        run: |
+          VERSION="${VERSION#v}"
+          {
+            echo "## Released v$VERSION"
+            echo
+            echo "Consumers can add the package dependency with an exact version or a compatible range beginning at $VERSION."
+            echo "https://github.com/${GITHUB_REPOSITORY}/releases/tag/v$VERSION"
+          } >> "$GITHUB_STEP_SUMMARY"

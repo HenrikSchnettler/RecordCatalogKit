@@ -1,0 +1,36 @@
+name: Quality
+
+on:
+  push:
+  pull_request:
+  merge_group:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: quality-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  lint-and-test:
+    name: Lint, test, and build
+    runs-on: macos-26
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Setup Swift quality tools
+        uses: ./.github/actions/setup-swift-tools
+
+      - name: Lint
+        run: ./Scripts/lint.sh
+
+      - name: Test
+        run: swift test
+
+      - name: Release build
+        run: swift build -c release
