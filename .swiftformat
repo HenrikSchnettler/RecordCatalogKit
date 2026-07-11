@@ -5,4 +5,5 @@
 --wrapparameters before-first
 --wrapcollections before-first
 --stripunusedargs closure-only
+--disable redundantSendable
 --exclude .build
