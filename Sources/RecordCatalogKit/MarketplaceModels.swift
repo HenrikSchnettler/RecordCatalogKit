@@ -122,6 +122,8 @@ public struct ListingDraft: Encodable, Sendable {
     public var location: String?
     public var weight: Int?
     public var formatQuantity: Int?
+    public var estimateWeightAutomatically: Bool
+    public var estimateFormatQuantityAutomatically: Bool
 
     public init(
         releaseID: ReleaseID,
@@ -134,12 +136,16 @@ public struct ListingDraft: Encodable, Sendable {
         externalID: String? = nil,
         location: String? = nil,
         weight: Int? = nil,
-        formatQuantity: Int? = nil
+        formatQuantity: Int? = nil,
+        estimateWeightAutomatically: Bool = false,
+        estimateFormatQuantityAutomatically: Bool = false
     ) {
         self.releaseID = releaseID; self.condition = condition; self.price = price
         self.sleeveCondition = sleeveCondition; self.comments = comments; self.allowOffers = allowOffers
         self.status = status; self.externalID = externalID; self.location = location
         self.weight = weight; self.formatQuantity = formatQuantity
+        self.estimateWeightAutomatically = estimateWeightAutomatically
+        self.estimateFormatQuantityAutomatically = estimateFormatQuantityAutomatically
     }
 
     enum CodingKeys: String, CodingKey {
@@ -149,6 +155,29 @@ public struct ListingDraft: Encodable, Sendable {
         case allowOffers = "allow_offers"
         case externalID = "external_id"
         case formatQuantity = "format_quantity"
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var c = encoder.container(keyedBy: CodingKeys.self)
+        try c.encode(releaseID, forKey: .releaseID)
+        try c.encode(condition, forKey: .condition)
+        try c.encode(price, forKey: .price)
+        try c.encodeIfPresent(sleeveCondition, forKey: .sleeveCondition)
+        try c.encodeIfPresent(comments, forKey: .comments)
+        try c.encodeIfPresent(allowOffers, forKey: .allowOffers)
+        try c.encodeIfPresent(status, forKey: .status)
+        try c.encodeIfPresent(externalID, forKey: .externalID)
+        try c.encodeIfPresent(location, forKey: .location)
+        if estimateWeightAutomatically {
+            try c.encode("auto", forKey: .weight)
+        } else {
+            try c.encodeIfPresent(weight, forKey: .weight)
+        }
+        if estimateFormatQuantityAutomatically {
+            try c.encode("auto", forKey: .formatQuantity)
+        } else {
+            try c.encodeIfPresent(formatQuantity, forKey: .formatQuantity)
+        }
     }
 }
 
@@ -163,6 +192,8 @@ public struct ListingChanges: Encodable, Sendable {
     public var location: String?
     public var weight: Int?
     public var formatQuantity: Int?
+    public var estimateWeightAutomatically: Bool
+    public var estimateFormatQuantityAutomatically: Bool
 
     public init(
         condition: MediaCondition? = nil,
@@ -174,12 +205,16 @@ public struct ListingChanges: Encodable, Sendable {
         externalID: String? = nil,
         location: String? = nil,
         weight: Int? = nil,
-        formatQuantity: Int? = nil
+        formatQuantity: Int? = nil,
+        estimateWeightAutomatically: Bool = false,
+        estimateFormatQuantityAutomatically: Bool = false
     ) {
         self.condition = condition; self.sleeveCondition = sleeveCondition; self.price = price
         self.comments = comments; self.allowOffers = allowOffers; self.status = status
         self.externalID = externalID; self.location = location; self.weight = weight; self
             .formatQuantity = formatQuantity
+        self.estimateWeightAutomatically = estimateWeightAutomatically
+        self.estimateFormatQuantityAutomatically = estimateFormatQuantityAutomatically
     }
 
     enum CodingKeys: String, CodingKey {
@@ -188,6 +223,28 @@ public struct ListingChanges: Encodable, Sendable {
         case allowOffers = "allow_offers"
         case externalID = "external_id"
         case formatQuantity = "format_quantity"
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var c = encoder.container(keyedBy: CodingKeys.self)
+        try c.encodeIfPresent(condition, forKey: .condition)
+        try c.encodeIfPresent(sleeveCondition, forKey: .sleeveCondition)
+        try c.encodeIfPresent(price, forKey: .price)
+        try c.encodeIfPresent(comments, forKey: .comments)
+        try c.encodeIfPresent(allowOffers, forKey: .allowOffers)
+        try c.encodeIfPresent(status, forKey: .status)
+        try c.encodeIfPresent(externalID, forKey: .externalID)
+        try c.encodeIfPresent(location, forKey: .location)
+        if estimateWeightAutomatically {
+            try c.encode("auto", forKey: .weight)
+        } else {
+            try c.encodeIfPresent(weight, forKey: .weight)
+        }
+        if estimateFormatQuantityAutomatically {
+            try c.encode("auto", forKey: .formatQuantity)
+        } else {
+            try c.encodeIfPresent(formatQuantity, forKey: .formatQuantity)
+        }
     }
 }
 
@@ -296,9 +353,24 @@ public struct OrderTracking: Decodable, Sendable, Equatable {
 public struct OrderChanges: Encodable, Sendable {
     public var status: OrderStatus?
     public var shipping: Decimal?
+    public var tracking: OrderTrackingChanges?
 
-    public init(status: OrderStatus? = nil, shipping: Decimal? = nil) {
-        self.status = status; self.shipping = shipping
+    public init(
+        status: OrderStatus? = nil,
+        shipping: Decimal? = nil,
+        tracking: OrderTrackingChanges? = nil
+    ) {
+        self.status = status; self.shipping = shipping; self.tracking = tracking
+    }
+}
+
+public struct OrderTrackingChanges: Encodable, Sendable, Equatable {
+    public let number: String
+    public var carrier: String?
+
+    public init(number: String, carrier: String? = nil) {
+        self.number = number
+        self.carrier = carrier
     }
 }
 

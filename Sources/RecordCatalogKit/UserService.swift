@@ -116,11 +116,20 @@ public struct CollectionService: Sendable {
         return response.releases
     }
 
-    public func items(in folderID: FolderID, pageSize: Int = 50) -> Paginator<CollectionItem> {
+    public func items(
+        in folderID: FolderID,
+        sort: CollectionSort? = nil,
+        order: SortOrder? = nil,
+        pageSize: Int = 50
+    ) -> Paginator<CollectionItem> {
         Paginator(pageSize: pageSize) { [core, username] page in
+            let sorting = [
+                query("sort", sort?.rawValue),
+                query("sort_order", order?.rawValue),
+            ].compactMap(\.self)
             let response: CollectionItemsResponse = try await core.send(.get(
                 "/users/\(escapedPath(username))/collection/folders/\(folderID.rawValue)/releases",
-                query: page.validated().queryItems
+                query: page.validated().queryItems + sorting
             ))
             return Page(items: response.releases, metadata: response.pagination)
         }
@@ -139,16 +148,21 @@ public struct CollectionService: Sendable {
         _ rating: Int,
         releaseID: ReleaseID,
         instanceID: CollectionInstanceID,
-        folderID: FolderID
+        folderID: FolderID,
+        moveTo destinationFolderID: FolderID? = nil
     ) async throws -> CollectionItem {
         guard (0 ... 5).contains(rating)
         else { throw RecordCatalogError.invalidRequest("A rating must be between 0 and 5.") }
-        struct Body: Encodable { let rating: Int }
-        return try await core.send(.request(
+        try await core.sendVoid(.request(
             .post,
             "\(root())/folders/\(folderID.rawValue)/releases/\(releaseID.rawValue)/instances/\(instanceID.rawValue)",
-            body: jsonBody(Body(rating: rating))
+            body: jsonBody(CollectionInstanceChanges(rating: rating, folderID: destinationFolderID))
         ))
+        let updatedItems = try await items(for: releaseID)
+        guard let updated = updatedItems.first(where: { $0.instanceID == instanceID }) else {
+            throw RecordCatalogError.invalidResponse
+        }
+        return updated
     }
 
     public func remove(
@@ -186,6 +200,17 @@ public struct CollectionService: Sendable {
     public func value() async throws -> CollectionValue {
         try await core.send(.get("\(root())/value", authentication: .user))
     }
+}
+
+public struct CollectionSort: ExtensibleStringValue {
+    public let rawValue: String
+    public init(rawValue: String) {
+        self.rawValue = rawValue
+    }
+
+    public static let label = Self("label"), artist = Self("artist"), title = Self("title")
+    public static let catalogNumber = Self("catno"), format = Self("format"), rating = Self("rating")
+    public static let added = Self("added"), year = Self("year")
 }
 
 public struct WantlistService: Sendable {
@@ -266,3 +291,9 @@ private struct ListsResponse: Decodable, Sendable { let pagination: PageMetadata
 private struct CollectionItemsResponse: Decodable,
     Sendable { let pagination: PageMetadata; let releases: [CollectionItem] }
 private struct WantlistResponse: Decodable, Sendable { let pagination: PageMetadata; let wants: [WantlistItem] }
+
+private struct CollectionInstanceChanges: Encodable {
+    let rating: Int
+    let folderID: FolderID?
+    enum CodingKeys: String, CodingKey { case rating; case folderID = "folder_id" }
+}

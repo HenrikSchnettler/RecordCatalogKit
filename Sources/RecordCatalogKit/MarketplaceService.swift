@@ -17,7 +17,12 @@ public struct MarketplaceService: Sendable {
 
     @discardableResult
     public func updateListing(_ id: ListingID, changes: ListingChanges) async throws -> MarketplaceListing {
-        try await core.send(.request(.post, "/marketplace/listings/\(id.rawValue)", body: jsonBody(changes)))
+        try await core.sendVoid(.request(
+            .post,
+            "/marketplace/listings/\(id.rawValue)",
+            body: jsonBody(changes)
+        ))
+        return try await listing(id: id)
     }
 
     public func deleteListing(_ id: ListingID) async throws {
@@ -60,12 +65,19 @@ public struct MarketplaceService: Sendable {
     }
 
     @discardableResult
-    public func addMessage(_ message: String, to orderID: OrderID) async throws -> OrderMessage {
-        struct Body: Encodable { let message: String }
+    public func addMessage(
+        _ message: String? = nil,
+        status: OrderStatus? = nil,
+        to orderID: OrderID
+    ) async throws -> OrderMessage {
+        guard message != nil || status != nil else {
+            throw RecordCatalogError.invalidRequest("An order message or status is required.")
+        }
+        struct Body: Encodable { let message: String?; let status: OrderStatus? }
         return try await core.send(.request(
             .post,
             "/marketplace/orders/\(escapedPath(orderID.rawValue))/messages",
-            body: jsonBody(Body(message: message))
+            body: jsonBody(Body(message: message, status: status))
         ))
     }
 
@@ -150,7 +162,7 @@ public struct InventorySort: ExtensibleStringValue {
 
     public static let listed = Self("listed"), price = Self("price"), item = Self("item"), artist = Self("artist"),
                       label = Self("label"), catalogNumber = Self("catno"), audio = Self("audio"),
-                      status = Self("status")
+                      status = Self("status"), location = Self("location")
 }
 
 private struct OrdersResponse: Decodable, Sendable { let pagination: PageMetadata; let orders: [MarketplaceOrder] }

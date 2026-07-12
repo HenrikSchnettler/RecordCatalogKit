@@ -44,6 +44,105 @@ import Testing
     #expect(object["allow_offers"] as? Bool == true)
 }
 
+@Test func listingUpdateHandlesNoContentAndRefetchesListing() async throws {
+    let (client, transport) = try makeClient(
+        authentication: .personalToken("private-token"),
+        responses: [
+            StubResponse(statusCode: 204, data: Data()),
+            StubResponse(
+                json: #"{"id":42,"status":"Draft","condition":"Mint (M)","price":{"currency":"USD","value":12.5},"release":{"id":7,"title":"Release"}}"#
+            ),
+        ]
+    )
+
+    let listing = try await client.marketplace.updateListing(
+        ListingID(42),
+        changes: ListingChanges(status: .draft)
+    )
+
+    #expect(listing.id == ListingID(42))
+    #expect(await transport.capturedRequests().map(\.httpMethod) == ["POST", "GET"])
+}
+
+@Test func collectionRatingHandlesNoContentAndRefetchesInstance() async throws {
+    let (client, transport) = try makeClient(
+        authentication: .personalToken("private-token"),
+        responses: [
+            StubResponse(statusCode: 204, data: Data()),
+            StubResponse(
+                json: #"{"releases":[{"instance_id":9,"folder_id":4,"rating":5,"basic_information":{"id":7,"title":"Release"}}]}"#
+            ),
+        ]
+    )
+
+    let item = try await client.user("example").collection.setRating(
+        5,
+        releaseID: ReleaseID(7),
+        instanceID: CollectionInstanceID(9),
+        folderID: FolderID(3),
+        moveTo: FolderID(4)
+    )
+
+    #expect(item.folderID == FolderID(4))
+    let requests = await transport.capturedRequests()
+    #expect(requests.map(\.httpMethod) == ["POST", "GET"])
+    let body = try #require(requests[0].httpBody)
+    let object = try #require(JSONSerialization.jsonObject(with: body) as? [String: Any])
+    #expect(object["rating"] as? Int == 5)
+    #expect(object["folder_id"] as? Int == 4)
+}
+
+@Test func documentedMarketplaceMutationValuesEncode() throws {
+    let listing = ListingChanges(
+        estimateWeightAutomatically: true,
+        estimateFormatQuantityAutomatically: true
+    )
+    let listingObject = try #require(
+        JSONSerialization.jsonObject(with: JSONEncoder().encode(listing)) as? [String: Any]
+    )
+    #expect(listingObject["weight"] as? String == "auto")
+    #expect(listingObject["format_quantity"] as? String == "auto")
+
+    let order = OrderChanges(tracking: OrderTrackingChanges(number: "TRACK-1", carrier: "DHL"))
+    let orderObject = try #require(
+        JSONSerialization.jsonObject(with: JSONEncoder().encode(order)) as? [String: Any]
+    )
+    let tracking = try #require(orderObject["tracking"] as? [String: Any])
+    #expect(tracking["number"] as? String == "TRACK-1")
+    #expect(tracking["carrier"] as? String == "DHL")
+}
+
+@Test func orderMessageSupportsStatusAndCollectionSupportsSorting() async throws {
+    let (client, transport) = try makeClient(
+        authentication: .personalToken("private-token"),
+        responses: [
+            StubResponse(json: #"{"message":"On its way","type":"message"}"#),
+            StubResponse(json: #"{"pagination":{"page":1,"pages":1,"per_page":50,"items":0,"urls":{}},"releases":[]}"#),
+        ]
+    )
+
+    _ = try await client.marketplace.addMessage(
+        "On its way",
+        status: .shipped,
+        to: OrderID("1-1")
+    )
+    _ = try await client.user("example").collection.items(
+        in: FolderID(3),
+        sort: .artist,
+        order: .descending
+    ).page()
+
+    let requests = await transport.capturedRequests()
+    let messageBody = try #require(requests[0].httpBody)
+    let messageObject = try #require(JSONSerialization.jsonObject(with: messageBody) as? [String: Any])
+    #expect(messageObject["message"] as? String == "On its way")
+    #expect(messageObject["status"] as? String == "Shipped")
+    let collectionURL = try #require(requests[1].url)
+    let components = try #require(URLComponents(url: collectionURL, resolvingAgainstBaseURL: false))
+    #expect(components.queryItems?.contains(URLQueryItem(name: "sort", value: "artist")) == true)
+    #expect(components.queryItems?.contains(URLQueryItem(name: "sort_order", value: "desc")) == true)
+}
+
 @Test func csvEncoderEscapesQuotesCommasAndNewlines() {
     let csv = CSVEncoder.add([
         InventoryAddRow(
